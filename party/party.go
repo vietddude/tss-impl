@@ -6,7 +6,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
@@ -20,6 +19,7 @@ import (
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/keygen"
 	"github.com/bnb-chain/tss-lib/v2/ecdsa/signing"
 	"github.com/bnb-chain/tss-lib/v2/tss"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang/protobuf/ptypes/any"
 	"google.golang.org/protobuf/proto"
 )
@@ -30,7 +30,8 @@ const (
 )
 
 func init() {
-	tss.RegisterCurve("elliptic.p256Curve", elliptic.P256())
+	tss.SetCurve(tss.S256())
+	tss.RegisterCurve("secp256k1", tss.S256())
 }
 
 var (
@@ -184,7 +185,10 @@ func (p *Party) ThresholdPK() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return x509.MarshalPKIXPublicKey(pk)
+
+	// Chuyển đổi khóa công khai sang định dạng secp256k1
+	pubKeyBytes := crypto.FromECDSAPub(pk)
+	return pubKeyBytes, nil
 }
 
 func (p *Party) SetShareData(shareData []byte) error {
@@ -193,9 +197,9 @@ func (p *Party) SetShareData(shareData []byte) error {
 	if err != nil {
 		return fmt.Errorf("failed deserializing shares: %w", err)
 	}
-	localSaveData.ECDSAPub.SetCurve(elliptic.P256())
+	localSaveData.ECDSAPub.SetCurve(tss.S256())
 	for _, xj := range localSaveData.BigXj {
-		xj.SetCurve(elliptic.P256())
+		xj.SetCurve(tss.S256())
 	}
 	p.shareData = &localSaveData
 	return nil
@@ -204,7 +208,7 @@ func (p *Party) SetShareData(shareData []byte) error {
 func (p *Party) Init(parties []uint16, threshold int, sendMsg func(msg []byte, isBroadcast bool, to uint16)) {
 	partyIDs := partyIDsFromNumbers(parties)
 	ctx := tss.NewPeerContext(partyIDs)
-	p.params = tss.NewParameters(elliptic.P256(), ctx, p.id, len(parties), threshold)
+	p.params = tss.NewParameters(tss.S256(), ctx, p.id, len(parties), threshold)
 	p.id.Index = p.locatePartyIndex(p.id)
 	p.sendMsg = sendMsg
 	p.closeChan = make(chan struct{})
@@ -231,7 +235,7 @@ func (p *Party) Sign(ctx context.Context, msgHash []byte) ([]byte, error) {
 
 	end := make(chan *common.SignatureData, 1)
 
-	msgToSign := hashToInt(msgHash, elliptic.P256())
+	msgToSign := hashToInt(msgHash, tss.S256())
 	party := signing.NewLocalParty(msgToSign, p.params, *p.shareData, p.out, end)
 
 	var endWG sync.WaitGroup

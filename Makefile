@@ -5,3 +5,5 @@ migrate-up:
 
 migrate-down:
 	goose -dir db/migrations postgres "$(POSTGRES_URL)" down
+run:
+	go run main.go

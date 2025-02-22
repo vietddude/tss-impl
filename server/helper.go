@@ -25,7 +25,7 @@ func (s *MPCServer) publishToRedis(sessionID string, data map[string]interface{}
 		return fmt.Errorf("failed to publish result: %w", err)
 	}
 
-	s.logger.Debug("published result to Redis", zap.String("session_id", sessionID))
+	s.logger.Debug("published result to Redis", zap.String("channel", channel))
 	return nil
 }
 

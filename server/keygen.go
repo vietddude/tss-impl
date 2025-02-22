@@ -5,13 +5,14 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	sqlc "github.com/vietddude/tss-impl/db/sqlc"
 	pb "github.com/vietddude/tss-impl/proto"
 	"github.com/vietddude/tss-impl/utils"
 	"go.uber.org/zap"
 )
 
-func (s *MPCServer) Keygen(ctx context.Context, sessionID string, parties []uint32, threshold int) ([]byte, []byte, error) {
+func (s *MPCServer) Keygen(ctx context.Context, sessionID string, parties []uint32, threshold int) (string, []byte, error) {
 	p := s.getOrCreateParty(sessionID)
 	defer s.removeParty(sessionID)
 
@@ -19,16 +20,15 @@ func (s *MPCServer) Keygen(ctx context.Context, sessionID string, parties []uint
 
 	shareData, err := p.KeyGen(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("keygen failed: %w", err)
+		return "", nil, fmt.Errorf("keygen failed: %w", err)
 	}
 	p.SetShareData(shareData)
 
-	pubKey, err := p.ThresholdPK()
+	pk, err := p.TPubKey()
 	if err != nil {
-		return nil, nil, fmt.Errorf("threshold PK generation failed: %w", err)
+		return "", nil, fmt.Errorf("failed to get threshold public key: %w", err)
 	}
-
-	return pubKey, shareData, nil
+	return crypto.PubkeyToAddress(*pk).Hex(), shareData, nil
 }
 
 func (s *MPCServer) InitKeygen(ctx context.Context, sessionID string, parties []uint32, threshold int) error {
@@ -63,7 +63,7 @@ func (s *MPCServer) runKeygen(sessionID string, parties []uint32, threshold int)
 
 	s.logger.Info("keygen completed",
 		zap.String("session_id", sessionID),
-		zap.String("pub_key", utils.PublicKeyToAddress(pubKey)))
+		zap.String("pub_key", pubKey))
 
 	encrypted, err := utils.EncryptAESGCM(shareData, []byte(s.cfg.EncryptKey))
 	if err != nil {
@@ -116,10 +116,10 @@ func (s *MPCServer) handleKeygen(ctx context.Context, req *pb.ActionRequest) err
 	return nil
 }
 
-func buildKegenResponse(sessionID string, pubKey []byte, shareData []byte) map[string]interface{} {
+func buildKegenResponse(sessionID string, pubKey string, shareData []byte) map[string]interface{} {
 	return map[string]interface{}{
 		"sesion_id":  sessionID,
-		"pub_key":    utils.PublicKeyToAddress(pubKey),
+		"pub_key":    pubKey,
 		"share_data": base64.StdEncoding.EncodeToString(shareData),
 	}
 }
