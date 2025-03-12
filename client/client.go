@@ -28,7 +28,7 @@ func main() {
 	client := pb.NewMPCServiceClient(conn)
 	// redisClient := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
 
-	// Đầu tiên thực hiện keygen
+	// // Đầu tiên thực hiện keygen
 	// sessionID := uuid.NewString()
 	// notifyCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	// defer cancel()
@@ -45,7 +45,7 @@ func main() {
 	// }
 
 	// // Subscribe để nhận kết quả keygen
-	// pubsub := redisClient.Subscribe(context.Background(), "mpc_keygen")
+	// pubsub := redisClient.Subscribe(context.Background(), "keygen:"+sessionID)
 	// defer pubsub.Close()
 
 	// // Chờ và xử lý kết quả keygen
@@ -66,18 +66,23 @@ func main() {
 	// Tạo message hash để sign (ví dụ)
 	msgHash := []byte("hello")
 
-	shareData, err := utils.LoadFromJSON("share_data_fea95c52-dc04-4858-8358-74c19e7149b2.txt")
+	shareData, err := utils.LoadFromJSON("share_data_b7b96631-d8a8-44e5-878b-0fcae3c01a97.txt")
 	if err != nil {
 		log.Fatalf("failed to load share data: %v", err)
 	}
 
+	encryptedShare, err := base64.StdEncoding.DecodeString(string(shareData))
+	if err != nil {
+		log.Fatalf("failed to decode base64 share: %v", err)
+	}
+
 	// Gửi yêu cầu NotifyAction cho signing
 	signRes, err := client.NotifyAction(signCtx, &pb.ActionRequest{
-		SessionId: "fea95c52-dc04-4858-8358-74c19e7149b2",
+		SessionId: "b7b96631-d8a8-44e5-878b-0fcae3c01a97",
 		Parties:   []uint32{1, 2, 3},
 		Threshold: 2,
 		MsgHash:   msgHash,
-		ShareData: shareData, // Truyền share data từ keygen
+		ShareData: encryptedShare, // Truyền share data từ keygen
 		Action:    pb.Action_INIT_SIGN,
 	})
 	if err != nil {
@@ -87,7 +92,7 @@ func main() {
 	log.Printf("Sign initialization response: %v\n", signRes)
 }
 
-func waitForKeygenResult(ch <-chan *redis.Message) []byte {
+func waitForKeygenResult(ch <-chan *redis.Message) string {
 	for msg := range ch {
 		var result map[string]string
 
@@ -99,12 +104,12 @@ func waitForKeygenResult(ch <-chan *redis.Message) []byte {
 		}
 
 		// Decode base64 share và trả về trực tiếp
-		encryptedShare, err := base64.StdEncoding.DecodeString(result["share_data"])
-		if err != nil {
-			log.Printf("Failed to decode base64 share: %v", err)
-			continue
-		}
-		return encryptedShare
+		// encryptedShare, err := base64.StdEncoding.DecodeString(result["share_data"])
+		// if err != nil {
+		// 	log.Printf("Failed to decode base64 share: %v", err)
+		// 	continue
+		// }
+		return result["share_data"]
 	}
-	return nil
+	return ""
 }
